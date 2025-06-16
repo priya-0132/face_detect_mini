@@ -1,0 +1,115 @@
+Attendace table
+
+
+
+
+id	int
+username	varchar(100)
+timestamp	datetime
+method	enum('face','manual','voice')
+status	enum('Present','Absent','Leave')
+
+
+
+
+leave_request table 
+
+
+
+
+
+id	int
+username	varchar(100)
+leave_type	varchar(100)
+start_date	date
+end_date	date
+reason	text
+status	enum('Pending','Approved','Rejected')
+request_time	timestamp
+decision_time	datetime
+role	varchar(50)
+approved_by	varchar(100)
+reject_reason	text
+document_path	varchar(255)
+
+
+
+
+
+
+
+
+salaries table
+
+
+
+
+
+id	int
+employee_id	varchar(100)
+salary_amount	decimal(10,2)
+bonus	decimal(10,2)
+deductions	decimal(10,2)
+net_salary	decimal(10,2)
+
+
+
+
+
+
+
+
+
+
+leave_request  table 
+
+
+
+
+
+
+id	int
+username	varchar(100)
+leave_type	varchar(100)
+start_date	date
+end_date	date
+reason	text
+status	enum('Pending','Approved','Rejected')
+request_time	timestamp
+decision_time	datetime
+role	varchar(50)
+approved_by	varchar(100)
+reject_reason	text
+document_path	varchar(255)
+
+
+
+
+
+
+
+
+
+
+users_table
+
+
+
+
+
+
+
+
+
+
+id	int
+username	varchar(50)
+email	varchar(100)
+password	varchar(255)
+role	enum('admin','user')
+image_filename	varchar(255)
+encoding_filename	varchar(255)
+total_attendance	int
+last_attendance_time	datetime
+major	varchar(20)
+starting_year	int

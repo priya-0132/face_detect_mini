@@ -1,0 +1,1522 @@
+from PyQt5 import QtWidgets, QtGui, QtCore
+import sys
+import os
+import subprocess
+
+class AttendanceApp(QtWidgets.QMainWindow):
+    def __init__(self, user_role="user", username=""):
+        super().__init__()
+        self.user_role = user_role
+        self.username = username
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle("Face Recognition Attendance System")
+        self.setGeometry(100, 100, 800, 600)
+        self.setStyleSheet("background-color: #2C3E50;")
+
+        central_widget = QtWidgets.QWidget(self)
+        self.setCentralWidget(central_widget)
+        layout = QtWidgets.QVBoxLayout(central_widget)
+        layout.setAlignment(QtCore.Qt.AlignCenter)
+
+        self.label = QtWidgets.QLabel(f"Welcome, {self.username}!", self)
+        self.label.setFont(QtGui.QFont("Arial", 20, QtGui.QFont.Bold))
+        self.label.setStyleSheet("color: #ECF0F1;")
+        self.label.setAlignment(QtCore.Qt.AlignCenter)
+        layout.addWidget(self.label)
+
+        button_style = """
+            QPushButton {
+                background-color: #3498DB;
+                color: white;
+                border-radius: 10px;
+                font-size: 18px;
+                font-weight: bold;
+                padding: 15px;
+                min-width: 300px;
+            }
+            QPushButton:hover {
+                background-color: #2980B9;
+            }
+        """
+
+        self.buttons = [
+            ("Mark Attendance", f"G:/attendence/mark_attendence.py {self.username}"),
+            ("View Attendance List", f"G:/attendence/view_attendence_gui.py {self.username}"),
+        ]
+
+        if self.user_role == "admin":
+            self.buttons += [
+                ("Add Student", "G:/attendence/add_student_with_camera.py"),
+                ("Update Record", "G:/attendence/update_record.py"),
+                ("Update Face", "G:/attendence/update_face.py"),
+                ("Delete Record", "G:/attendence/delete_record.py"),
+            ]
+
+        self.buttons.append(("Logout", "exit"))
+
+        for text, command in self.buttons:
+            btn = QtWidgets.QPushButton(text, self)
+            btn.setStyleSheet(button_style)
+            btn.clicked.connect(lambda checked, cmd=command: subprocess.Popen([sys.executable] + cmd.split(), shell=True) if cmd != "exit" else self.close())
+            layout.addWidget(btn)
+
+if __name__ == "__main__":
+    app = QtWidgets.QApplication(sys.argv)
+    window = AttendanceApp(sys.argv[1], sys.argv[2])
+    window.show()
+    sys.exit(app.exec_())
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import cv2
+import face_recognition
+import pickle
+import os
+import mysql.connector
+
+# ✅ Connect to MySQL
+conn = mysql.connector.connect(
+    host="localhost",
+    user="root",
+    password="root",
+    database="FaceRecognitionDB"
+)
+cursor = conn.cursor()
+
+# ✅ Load student images
+folderPath = 'Images'
+if not os.path.exists(folderPath):
+    raise FileNotFoundError(f"Error: Folder '{folderPath}' not found!")
+
+pathList = os.listdir(folderPath)
+print("Images Found:", pathList)
+
+imgList = []
+studentIds = []
+
+for path in pathList:
+    img = cv2.imread(os.path.join(folderPath, path))
+    if img is not None:
+        imgList.append(img)
+        studentIds.append(os.path.splitext(path)[0])
+
+print("✅ Images Loaded:", studentIds)
+
+# ✅ Function to find encodings
+def findEncodings(imagesList):
+    encodeList = []
+    for img in imagesList:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        encode = face_recognition.face_encodings(img)
+        if encode:
+            encodeList.append(encode[0])
+    return encodeList
+
+# ✅ Generate face encodings
+print("Encoding Started ...")
+encodeListKnown = findEncodings(imgList)
+encodeListKnownWithIds = [encodeListKnown, studentIds]
+print("Encoding Complete")
+
+# ✅ Save encodings to file
+with open("EncodeFile.p", 'wb') as file:
+    pickle.dump(encodeListKnownWithIds, file)
+
+print("✅ Encoding file 'EncodeFile.p' saved successfully!")
+
+cursor.close()
+conn.close()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+from PyQt5 import QtWidgets, QtGui, QtCore
+import mysql.connector
+import os
+import sys
+
+class DeleteRecordWindow(QtWidgets.QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Delete Student Record")
+        self.setGeometry(200, 200, 400, 300)
+        self.setStyleSheet("background-color: #ECF0F1;")
+        self.initUI()
+
+    def initUI(self):
+        layout = QtWidgets.QVBoxLayout()
+        
+        self.label = QtWidgets.QLabel("Enter Student Details for Deletion:")
+        self.label.setFont(QtGui.QFont("Arial", 12))
+        layout.addWidget(self.label)
+        
+        self.student_id_input1 = QtWidgets.QLineEdit()
+        self.student_id_input1.setPlaceholderText("Enter Student ID")
+        layout.addWidget(self.student_id_input1)
+        
+        self.student_id_input2 = QtWidgets.QLineEdit()
+        self.student_id_input2.setPlaceholderText("Re-enter Student ID")
+        layout.addWidget(self.student_id_input2)
+        
+        self.student_name_input = QtWidgets.QLineEdit()
+        self.student_name_input.setPlaceholderText("Enter Student Name")
+        layout.addWidget(self.student_name_input)
+        
+        self.warning_label = QtWidgets.QLabel("⚠ WARNING: This action cannot be undone!")
+        self.warning_label.setStyleSheet("color: red; font-weight: bold;")
+        layout.addWidget(self.warning_label)
+        
+        self.delete_btn = QtWidgets.QPushButton("Delete Record")
+        self.delete_btn.setStyleSheet("background-color: #E74C3C; color: white; padding: 10px; font-size: 14px;")
+        self.delete_btn.clicked.connect(self.delete_record)
+        layout.addWidget(self.delete_btn)
+        
+        self.result_label = QtWidgets.QLabel("")
+        layout.addWidget(self.result_label)
+        
+        self.setLayout(layout)
+    
+    def delete_record(self):
+        student_id1 = self.student_id_input1.text()
+        student_id2 = self.student_id_input2.text()
+        student_name = self.student_name_input.text()
+        
+        if not student_id1 or not student_id2 or not student_name:
+            QtWidgets.QMessageBox.warning(self, "Error", "⚠ All fields are required!")
+            return
+        
+        if student_id1 != student_id2:
+            QtWidgets.QMessageBox.warning(self, "Error", "⚠ Student IDs do not match!")
+            return
+        
+        try:
+            conn = mysql.connector.connect(
+                host="localhost",
+                user="root",
+                password="root",
+                database="FaceRecognitionDB"
+            )
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, name FROM Students WHERE id = %s", (student_id1,))
+            student = cursor.fetchone()
+            
+            if student and student[1] == student_name:
+                confirm = QtWidgets.QMessageBox.question(self, "Confirm Deletion", 
+                    "Are you sure you want to delete this record? This action cannot be undone!", 
+                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+                
+                if confirm == QtWidgets.QMessageBox.Yes:
+                    cursor.execute("DELETE FROM Students WHERE id = %s", (student_id1,))
+                    conn.commit()
+                    
+                    image_path = f"Images/{student_id1}.jpg"
+                    encoding_path = f"Encodings/{student_id1}.p"
+                    
+                    if os.path.exists(image_path):
+                        os.remove(image_path)
+                    if os.path.exists(encoding_path):
+                        os.remove(encoding_path)
+                    
+                    QtWidgets.QMessageBox.information(self, "Success", "✅ Record Deleted Successfully!")
+                else:
+                    QtWidgets.QMessageBox.information(self, "Cancelled", "⚠ Deletion Cancelled.")
+            else:
+                QtWidgets.QMessageBox.warning(self, "Error", "⚠ Student ID or Name Incorrect!")
+            
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Error", f"❌ Error: {str(e)}")
+
+if __name__ == "__main__":
+    app = QtWidgets.QApplication(sys.argv)
+    window = DeleteRecordWindow()
+    window.show()
+    sys.exit(app.exec_())
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import mysql.connector
+import os
+from tkinter import simpledialog, Tk
+
+# ✅ Connect to MySQL
+conn = mysql.connector.connect(
+    host="localhost",
+    user="root",
+    password="root",
+    database="FaceRecognitionDB"
+)
+cursor = conn.cursor()
+
+# ✅ Prompt for Student ID
+root = Tk()
+root.withdraw()
+student_id = simpledialog.askstring("Input", "Enter Student ID to delete:", parent=root)
+
+if student_id:
+    cursor.execute("SELECT id FROM Students WHERE id = %s", (student_id,))
+    student = cursor.fetchone()
+
+    if student:
+        confirm = simpledialog.askstring("Confirm", "Type 'DELETE' to confirm:", parent=root)
+
+        if confirm == "DELETE":
+            # ✅ Delete from MySQL
+            cursor.execute("DELETE FROM Students WHERE id = %s", (student_id,))
+            conn.commit()
+            print("✅ Student record deleted from database!")
+
+            # ✅ Remove Image & Encoding
+            image_path = f"Images/{student_id}.jpg"
+            encoding_path = f"Encodings/{student_id}.p"
+
+            if os.path.exists(image_path):
+                os.remove(image_path)
+                print("✅ Image file deleted!")
+
+            if os.path.exists(encoding_path):
+                os.remove(encoding_path)
+                print("✅ Encoding file deleted!")
+
+        else:
+            print("⚠ Deletion cancelled.")
+
+    else:
+        print("⚠ Student ID not found.")
+
+cursor.close()
+conn.close()
+
+
+
+
+
+
+
+import mysql.connector
+import sys
+import tkinter as tk
+from tkinter import ttk, messagebox
+
+class ViewAttendanceApp:
+    def __init__(self, root, role="user", username=None):
+        """Initialize Attendance Viewer GUI"""
+        print("🔄 Initializing Attendance GUI...")
+        self.root = root
+        self.role = role
+        self.username = username  
+
+        self.root.title("View Attendance Records")
+        self.root.geometry("1000x500")
+        self.root.configure(bg="#ECF0F1")
+
+        title_label = tk.Label(self.root, text="Attendance Records", font=("Arial", 16, "bold"), bg="#ECF0F1")
+        title_label.pack(pady=10)
+
+        self.tree = ttk.Treeview(self.root, columns=("Username", "Total Attendance"), show='headings')
+        self.tree.heading("Username", text="Username")
+        self.tree.heading("Total Attendance", text="Total Attendance")
+
+        self.tree.column("Username", width=200)
+        self.tree.column("Total Attendance", width=150)
+
+        self.tree.pack(pady=20, fill=tk.BOTH, expand=True)
+
+        self.load_attendance()
+
+    def load_attendance(self):
+        """Load Attendance Data from Database"""
+        print("🔄 Connecting to Database...")  
+        try:
+            conn = mysql.connector.connect(
+                host="localhost",
+                user="root",
+                password="root",
+                database="FaceRecognitionDB"
+            )
+            cursor = conn.cursor()
+
+            if self.role == "admin":
+                cursor.execute("SELECT username, total_attendance FROM users")
+            else:
+                if not self.username:
+                    messagebox.showwarning("Error", "⚠ No username provided for the user role!")
+                    return
+
+                cursor.execute("SELECT username, total_attendance FROM users WHERE username = %s", (self.username,))
+            
+            records = cursor.fetchall()
+            print(f"✅ Retrieved {len(records)} records from database.")
+
+            if not records:
+                messagebox.showinfo("Info", "⚠ No attendance records found.")
+                return
+
+            for record in records:
+                self.tree.insert("", tk.END, values=record)
+
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as e:
+            messagebox.showerror("Database Error", f"❌ {str(e)}")
+
+if __name__ == "__main__":
+    print("🚀 Starting View Attendance GUI...")  
+
+    role = sys.argv[1] if len(sys.argv) > 1 else "admin"
+    username = sys.argv[2] if len(sys.argv) > 2 else None  # ✅ Get username
+
+    root = tk.Tk()
+    app = ViewAttendanceApp(root, role, username)
+    root.mainloop()
+
+
+
+
+
+
+
+
+
+
+
+
+import mysql.connector
+import sys
+import tkinter as tk
+from tkinter import ttk, messagebox
+
+class ViewAttendanceApp:
+    def __init__(self, root, role="user", username=None):
+        """Initialize Attendance Viewer GUI"""
+        print("🔄 Initializing Attendance GUI...")
+        self.root = root
+        self.role = role
+        self.username = username  
+
+        self.root.title("View Attendance Records")
+        self.root.geometry("1000x500")
+        self.root.configure(bg="#ECF0F1")
+
+        title_label = tk.Label(self.root, text="Attendance Records", font=("Arial", 16, "bold"), bg="#ECF0F1")
+        title_label.pack(pady=10)
+
+        self.tree = ttk.Treeview(self.root, columns=("Username", "Total Attendance"), show='headings')
+        self.tree.heading("Username", text="Username")
+        self.tree.heading("Total Attendance", text="Total Attendance")
+
+        self.tree.column("Username", width=200)
+        self.tree.column("Total Attendance", width=150)
+
+        self.tree.pack(pady=20, fill=tk.BOTH, expand=True)
+
+        self.load_attendance()
+
+    def load_attendance(self):
+        """Load Attendance Data from Database"""
+        print("🔄 Connecting to Database...")  
+        try:
+            conn = mysql.connector.connect(
+                host="localhost",
+                user="root",
+                password="root",
+                database="FaceRecognitionDB"
+            )
+            cursor = conn.cursor()
+
+            if self.role == "admin":
+                cursor.execute("SELECT username, total_attendance FROM users")
+            else:
+                if not self.username:
+                    messagebox.showwarning("Error", "⚠ No username provided for the user role!")
+                    return
+
+                cursor.execute("SELECT username, total_attendance FROM users WHERE username = %s", (self.username,))
+            
+            records = cursor.fetchall()
+            print(f"✅ Retrieved {len(records)} records from database.")
+
+            if not records:
+                messagebox.showinfo("Info", "⚠ No attendance records found.")
+                return
+
+            for record in records:
+                self.tree.insert("", tk.END, values=record)
+
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as e:
+            messagebox.showerror("Database Error", f"❌ {str(e)}")
+
+if __name__ == "__main__":
+    print("🚀 Starting View Attendance GUI...")  
+
+    role = sys.argv[1] if len(sys.argv) > 1 else "admin"
+    username = sys.argv[2] if len(sys.argv) > 2 else None  # ✅ Get username
+
+    root = tk.Tk()
+    app = ViewAttendanceApp(root, role, username)
+    root.mainloop()
+
+
+
+
+import mysql.connector
+import tkinter as tk
+from tkinter import messagebox, simpledialog
+import subprocess
+from send_otp import send_otp  # ✅ Import OTP Module
+import cv2
+import face_recognition
+import numpy as np
+import os
+
+class UserManagementApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("User Management")
+        self.root.geometry("400x400")
+
+        self.initUI()
+
+    def initUI(self):
+        tk.Label(self.root, text="Face Recognition System", font=("Arial", 14, "bold")).pack(pady=10)
+
+        tk.Label(self.root, text="Username:").pack()
+        self.entry_username = tk.Entry(self.root)
+        self.entry_username.pack()
+
+        tk.Label(self.root, text="Password:").pack()
+        self.entry_password = tk.Entry(self.root, show="*")
+        self.entry_password.pack()
+
+        tk.Button(self.root, text="🔑 Login", command=self.login).pack(pady=5)
+        tk.Button(self.root, text="📷 Login with Face", command=self.login_with_face).pack(pady=5)
+        tk.Button(self.root, text="🆕 Create New User", command=self.create_user).pack(pady=5)
+        tk.Button(self.root, text="🔄 Reset Password", command=self.reset_password).pack(pady=5)
+
+    def login(self):
+        username = self.entry_username.get()
+        password = self.entry_password.get()
+
+        if not username or not password:
+            messagebox.showwarning("⚠ Error", "Username and password are required!")
+            return
+
+        try:
+            conn = mysql.connector.connect(host="localhost", user="root", password="root", database="FaceRecognitionDB")
+            cursor = conn.cursor()
+            cursor.execute("SELECT email, role FROM users WHERE username = %s AND password = %s", (username, password))
+            user = cursor.fetchone()
+            cursor.close()
+            conn.close()
+
+            if user:
+                email, role = user
+
+                messagebox.showinfo("✅ Success", "Login Successful!")
+                self.root.destroy()  # Close login window
+                
+                # ✅ Open GUI with Role-Based Access
+                subprocess.Popen(["python", "G:/attendence/GUI.py", role])
+            else:
+                messagebox.showerror("❌ Error", "Invalid Username or Password!")
+        except Exception as e:
+            messagebox.showerror("❌ Error", f"Database Error: {str(e)}")
+
+    def login_with_face(self):
+        """🔵 Face Recognition Login"""
+        known_encodings = []
+        known_usernames = []
+
+        try:
+            conn = mysql.connector.connect(host="localhost", user="root", password="root", database="FaceRecognitionDB")
+            cursor = conn.cursor()
+            cursor.execute("SELECT username FROM users")
+            users = cursor.fetchall()
+            cursor.close()
+            conn.close()
+
+            if not users:
+                messagebox.showwarning("⚠ Error", "No users registered for face recognition.")
+                return
+
+            for user in users:
+                username = user[0]
+                image_path = f"Encodings/{username}.p"  # 🔹 Ensure face images are stored in this path
+                if os.path.exists(image_path):
+                    img = face_recognition.load_image_file(image_path)
+                    encoding = face_recognition.face_encodings(img)
+                    if encoding:
+                        known_encodings.append(encoding[0])
+                        known_usernames.append(username)
+
+            if not known_encodings:
+                messagebox.showerror("❌ Error", "No valid face encodings found.")
+                return
+
+            # Capture Image from Webcam
+            cap = cv2.VideoCapture(0)
+            messagebox.showinfo("🔍 Face Recognition", "Looking for your face...")
+
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
+                rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+                face_locations = face_recognition.face_locations(rgb_frame)
+                face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+
+                for encoding in face_encodings:
+                    matches = face_recognition.compare_faces(known_encodings, encoding, tolerance=0.5)
+                    if True in matches:
+                        matched_idx = matches.index(True)
+                        username = known_usernames[matched_idx]
+                        cap.release()
+                        cv2.destroyAllWindows()
+                        messagebox.showinfo("✅ Success", f"Welcome {username}!")
+                        self.root.destroy()
+                        subprocess.Popen(["python", "G:/attendence/GUI.py", username])
+                        return
+
+            cap.release()
+            cv2.destroyAllWindows()
+            messagebox.showerror("❌ Error", "Face Not Recognized!")
+        except Exception as e:
+            messagebox.showerror("⚠ Error", f"Face Login Error: {str(e)}")
+
+    def create_user(self):
+        new_username = simpledialog.askstring("Create User", "Enter New Username:")
+        new_password = simpledialog.askstring("Create User", "Enter New Password:")
+        email = simpledialog.askstring("Create User", "Enter Email:")
+
+        role = "user"  # ✅ Default Role
+
+        if not new_username or not new_password or not email:
+            messagebox.showwarning("⚠ Error", "All fields are required!")
+            return
+
+        try:
+            conn = mysql.connector.connect(host="localhost", user="root", password="root", database="FaceRecognitionDB")
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO users (username, password, email, role) VALUES (%s, %s, %s, %s)", 
+                           (new_username, new_password, email, role))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            messagebox.showinfo("✅ Success", "User Created Successfully!")
+        except mysql.connector.Error as err:
+            messagebox.showerror("❌ Error", f"Database Error: {str(err)}")
+
+    def reset_password(self):
+        username = simpledialog.askstring("Reset Password", "Enter Your Username:")
+        if not username:
+            messagebox.showwarning("⚠ Error", "Username is required!")
+            return
+
+        try:
+            conn = mysql.connector.connect(host="localhost", user="root", password="root", database="FaceRecognitionDB")
+            cursor = conn.cursor()
+            cursor.execute("SELECT email FROM users WHERE username = %s", (username,))
+            user = cursor.fetchone()
+            cursor.close()
+            conn.close()
+
+            if not user:
+                messagebox.showwarning("⚠ Error", "Username Not Found!")
+                return
+
+            email = user[0]
+            sent_otp = send_otp(email)
+            entered_otp = simpledialog.askstring("OTP Verification", "Enter the OTP sent to your email:")
+            if entered_otp != sent_otp:
+                messagebox.showerror("❌ Error", "Invalid OTP!")
+                return
+
+            new_password = simpledialog.askstring("Reset Password", "Enter New Password:")
+            if not new_password:
+                messagebox.showwarning("⚠ Error", "New password is required!")
+                return
+
+            conn = mysql.connector.connect(host="localhost", user="root", password="root", database="FaceRecognitionDB")
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET password = %s WHERE username = %s", (new_password, username))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            messagebox.showinfo("✅ Success", "Password Reset Successfully!")
+        except Exception as e:
+            messagebox.showerror("❌ Error", f"Database Error: {str(e)}")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = UserManagementApp(root)
+    root.mainloop()
+
+
+
+
+
+
+
+
+
+import mysql.connector
+import cv2
+import face_recognition
+import pickle
+import numpy as np
+from datetime import datetime
+import os
+import subprocess
+import tkinter as tk
+from tkinter import messagebox
+
+# ✅ Connect to MySQL
+conn = mysql.connector.connect(
+    host="localhost",
+    user="root",
+    password="root",
+    database="FaceRecognitionDB"
+)
+cursor = conn.cursor()
+
+# ✅ Load All Stored Face Encodings
+encoding_folder = "Encodings"
+if not os.path.exists(encoding_folder):
+    os.makedirs(encoding_folder)
+
+encodeListKnown = []
+studentUsernames = []
+
+print("🔄 Loading All Stored Encodings ...")
+for filename in os.listdir(encoding_folder):
+    if filename.endswith(".p"):
+        username = filename.split(".")[0]
+        with open(os.path.join(encoding_folder, filename), 'rb') as file:
+            encode = pickle.load(file)
+        encodeListKnown.append(encode)
+        studentUsernames.append(username)
+
+print(f"✅ Loaded {len(encodeListKnown)} Encoded Faces")
+
+# ✅ Open Webcam
+cap = cv2.VideoCapture(0)
+cap.set(3, 640)
+cap.set(4, 480)
+
+face_detected = False
+attendance_marked = False
+start_time = datetime.now()
+
+while True:
+    success, img = cap.read()
+    imgS = cv2.resize(img, (0, 0), None, 0.25, 0.25)
+    imgS = cv2.cvtColor(imgS, cv2.COLOR_BGR2RGB)
+
+    faceCurFrame = face_recognition.face_locations(imgS)
+    encodeCurFrame = face_recognition.face_encodings(imgS, faceCurFrame)
+
+    elapsed_time = (datetime.now() - start_time).total_seconds()
+    if elapsed_time > 7:
+        break  # ✅ Close camera if no face detected for 7 seconds
+
+    if faceCurFrame:
+        face_detected = True
+
+        for encodeFace, faceLoc in zip(encodeCurFrame, faceCurFrame):
+            matches = face_recognition.compare_faces(encodeListKnown, encodeFace)
+            faceDis = face_recognition.face_distance(encodeListKnown, encodeFace)
+            matchIndex = np.argmin(faceDis) if faceDis.size > 0 else None
+
+            if matchIndex is not None and matches[matchIndex]:
+                username = studentUsernames[matchIndex]
+
+                # ✅ Fetch User Info from MySQL
+                cursor.execute("SELECT username, email, total_attendance FROM users WHERE username = %s", (username,))
+                userInfo = cursor.fetchone()
+
+                if userInfo:
+                    username, email, total_attendance = userInfo
+
+                    # ✅ Update Attendance in MySQL
+                    cursor.execute("""
+                        UPDATE users 
+                        SET total_attendance = total_attendance + 1, last_attendance_time = %s 
+                        WHERE username = %s
+                    """, (datetime.now(), username))
+                    conn.commit()
+
+                    # ✅ Draw Green Circle & Show Username
+                    y1, x2, y2, x1 = faceLoc
+                    y1, x2, y2, x1 = y1 * 4, x2 * 4, y2 * 4, x1 * 4
+                    center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
+                    radius = (x2 - x1) // 2
+
+                    cv2.circle(img, (center_x, center_y), radius, (0, 255, 0), 4)
+                    cv2.putText(img, f"Username: {username}", (x1, y1 - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                    cv2.putText(img, "Attendance Marked!", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+
+                    cv2.imshow("Face Attendance", img)
+                    cv2.waitKey(2000)  # ✅ Show for 2 seconds before closing
+                    attendance_marked = True
+                    break
+            else:
+                cv2.putText(img, "❌ Face Not Recognized!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+    cv2.imshow("Face Attendance", img)
+
+    if attendance_marked or (cv2.waitKey(1) & 0xFF == ord('q')):
+        break
+
+# ✅ If No Known Face Found, Ask to Add New Student
+if not attendance_marked:
+    root = tk.Tk()
+    root.withdraw()
+    result = messagebox.askyesno("No Record Found", "No matching user found. Do you want to register?")
+    if result:
+        subprocess.Popen(["python", "G:/attendence/add_student_with_camera.py"])
+
+cap.release()
+cv2.destroyAllWindows()
+cursor.close()
+conn.close()
+
+
+
+
+
+
+
+
+
+
+
+import smtplib
+import random
+import time
+import tkinter as tk
+from threading import Thread
+
+# ✅ Store OTPs temporarily (email -> OTP, timestamp)
+otp_storage = {}
+
+def send_otp(email):
+    """✅ Send OTP to the given email and store it with a timestamp."""
+    otp = str(random.randint(100000, 999999))  # Generate 6-digit OTP
+
+    sender_email = "snscollege845401@gmail.com"  # Replace with your email
+    sender_password = "pxfyilnmpoyzawzj"  # ✅ Use App Password
+
+    subject = "Your OTP for Face Recognition System"
+    message = f"Your OTP is: {otp}\n\nThis OTP is valid for 1 minute."
+
+    try:
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, email, f"Subject: {subject}\n\n{message}")
+        server.quit()
+
+        # ✅ Store OTP with timestamp
+        otp_storage[email] = {"otp": otp, "timestamp": time.time()}
+        print(f"✅ OTP Sent to {email}")
+        return otp  # ✅ Return OTP for verification
+    except Exception as e:
+        print(f"Email Error: {e}")
+        return None
+
+def verify_otp(email, entered_otp):
+    """✅ Verify if the entered OTP is correct and not expired (valid for 1 min)."""
+    if email not in otp_storage:
+        return False  # No OTP sent
+
+    otp_data = otp_storage[email]
+    current_time = time.time()
+
+    # ✅ Check if OTP is correct and within 60 seconds
+    if otp_data["otp"] == entered_otp and (current_time - otp_data["timestamp"]) <= 60:
+        return True  # ✅ OTP is valid
+    return False  # ❌ OTP expired or incorrect
+
+# ✅ Tkinter GUI for OTP Verification with Resend Option
+class OTPVerificationApp:
+    def __init__(self, root, email):
+        self.root = root
+        self.email = email
+        self.root.title("OTP Verification")
+        self.root.geometry("400x300")
+
+        self.otp_label = tk.Label(root, text="Enter the OTP sent to your email:", font=("Arial", 12))
+        self.otp_label.pack(pady=10)
+
+        self.otp_entry = tk.Entry(root, font=("Arial", 14))
+        self.otp_entry.pack(pady=10)
+
+        self.verify_button = tk.Button(root, text="Verify OTP", font=("Arial", 12), command=self.verify_otp)
+        self.verify_button.pack(pady=5)
+
+        # ✅ Resend OTP Button (Initially Disabled)
+        self.resend_button = tk.Button(root, text="Resend OTP (Wait 30s)", font=("Arial", 12), state=tk.DISABLED, command=self.resend_otp)
+        self.resend_button.pack(pady=5)
+
+        # ✅ Start Timer for Resend OTP Button
+        self.start_resend_timer()
+
+    def verify_otp(self):
+        entered_otp = self.otp_entry.get()
+        if verify_otp(self.email, entered_otp):
+            tk.messagebox.showinfo("Success", "✅ OTP Verified Successfully!")
+            self.root.destroy()  # ✅ Close OTP window after successful verification
+        else:
+            tk.messagebox.showerror("Error", "❌ Invalid or Expired OTP. Try Again.")
+
+    def resend_otp(self):
+        """✅ Resend OTP and reset the timer."""
+        send_otp(self.email)
+        self.resend_button.config(text="Resend OTP (Wait 30s)", state=tk.DISABLED)
+        self.start_resend_timer()  # Restart 30s Timer
+
+    def start_resend_timer(self):
+        """✅ Enable Resend Button after 30 Seconds."""
+        def enable_button():
+            time.sleep(30)  # Wait for 30 seconds
+            self.resend_button.config(text="Resend OTP", state=tk.NORMAL)
+
+        # Run in a separate thread to avoid freezing UI
+        Thread(target=enable_button, daemon=True).start()
+
+# ✅ Example Usage:
+if __name__ == "__main__":
+    root = tk.Tk()
+    email = "test@example.com"  # Replace with actual email input from user
+    send_otp(email)  # ✅ Send OTP initially
+    app = OTPVerificationApp(root, email)
+    root.mainloop()
+
+
+
+
+
+import cv2
+import mysql.connector
+import os
+import pickle
+import face_recognition
+import sys
+import tkinter as tk
+from tkinter import messagebox
+
+# ✅ Ensure Username is Provided
+if len(sys.argv) != 2:
+    print("⚠ Error: Missing Username. Usage: update_face.py <username>")
+    sys.exit(1)
+
+username = sys.argv[1]
+
+# ✅ Connect to MySQL
+try:
+    conn = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="root",
+        database="FaceRecognitionDB"
+    )
+    cursor = conn.cursor()
+    cursor.execute("SELECT username FROM users WHERE username = %s", (username,))
+    user = cursor.fetchone()
+
+    if not user:
+        print("⚠ Username Not Found!")
+        messagebox.showwarning("Error", "⚠ Username Not Found in Database!")
+        sys.exit(1)
+except Exception as e:
+    print(f"❌ Database Connection Error: {str(e)}")
+    messagebox.showerror("Database Error", f"❌ {str(e)}")
+    sys.exit(1)
+
+# ✅ Open Webcam to Capture New Image
+cap = cv2.VideoCapture(0)
+cap.set(3, 640)
+cap.set(4, 480)
+
+print("📷 Press 'SPACE' to capture a new image or 'ESC' to exit.")
+while True:
+    success, img = cap.read()
+    cv2.imshow("Update Face", img)
+    key = cv2.waitKey(1)
+
+    if key == 27:  # ESC key to exit
+        cap.release()
+        cv2.destroyAllWindows()
+        sys.exit(0)
+
+    elif key == 32:  # SPACE key to capture
+        cap.release()
+        cv2.destroyAllWindows()
+        
+        # ✅ Save New Image
+        image_folder = "Images"
+        encoding_folder = "Encodings"
+        os.makedirs(image_folder, exist_ok=True)
+        os.makedirs(encoding_folder, exist_ok=True)
+        
+        image_path = f"{image_folder}/{username}.jpg"
+        cv2.imwrite(image_path, img)
+        
+        # ✅ Generate New Face Encoding
+        img_user = face_recognition.load_image_file(image_path)
+        face_locations = face_recognition.face_locations(img_user)
+
+        if face_locations:
+            encode = face_recognition.face_encodings(img_user, face_locations)[0]
+            encoding_path = f"{encoding_folder}/{username}.p"
+            with open(encoding_path, 'wb') as file:
+                pickle.dump(encode, file)
+            
+            print("✅ Face Updated Successfully!")
+            messagebox.showinfo("Success", "✅ Face Updated Successfully!")
+        else:
+            os.remove(image_path)
+            print("⚠ No face detected. Please try again.")
+            messagebox.showwarning("Error", "⚠ No face detected. Please try again.")
+        break
+
+cursor.close()
+conn.close()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+from PyQt5 import QtWidgets, QtGui, QtCore
+import cv2
+import mysql.connector
+import os
+import pickle
+import face_recognition
+import sys
+
+class UpdateFaceWindow(QtWidgets.QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Update Student Face")
+        self.setGeometry(200, 200, 400, 250)
+        self.setStyleSheet("background-color: #ECF0F1;")
+        self.initUI()
+
+    def initUI(self):
+        layout = QtWidgets.QVBoxLayout()
+        
+        self.label = QtWidgets.QLabel("Enter Username to Update Face:")
+        self.label.setFont(QtGui.QFont("Arial", 12))
+        layout.addWidget(self.label)
+        
+        self.student_id_input = QtWidgets.QLineEdit()
+        self.student_id_input.setPlaceholderText("Username")
+        layout.addWidget(self.student_id_input)
+        
+        self.update_btn = QtWidgets.QPushButton("Update Face")
+        self.update_btn.setStyleSheet("background-color: #3498DB; color: white; padding: 10px; font-size: 14px;")
+        self.update_btn.clicked.connect(self.update_face)
+        layout.addWidget(self.update_btn)
+        
+        self.result_label = QtWidgets.QLabel("")
+        layout.addWidget(self.result_label)
+        
+        self.setLayout(layout)
+    
+    def update_face(self):
+        username = self.student_id_input.text().strip()
+        
+        if not username:
+            self.result_label.setText("⚠ Username is required!")
+            return
+        
+        # ✅ Connect to Database
+        conn = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="root",
+            database="FaceRecognitionDB"
+        )
+        cursor = conn.cursor()
+        
+        # ✅ Check if user exists
+        cursor.execute("SELECT username FROM users WHERE username = %s", (username,))
+        student = cursor.fetchone()
+        
+        if not student:
+            self.result_label.setText("⚠ Username Not Found!")
+            cursor.close()
+            conn.close()
+            return
+        
+        # ✅ Open Webcam to Capture New Image
+        cap = cv2.VideoCapture(0)
+        cap.set(3, 640)
+        cap.set(4, 480)
+
+        print("📷 Press 'SPACE' to capture a new image or 'ESC' to exit.")
+        while True:
+            success, img = cap.read()
+            cv2.imshow("Update Face", img)
+            key = cv2.waitKey(1)
+
+            if key == 27:  # ESC key to exit
+                cap.release()
+                cv2.destroyAllWindows()
+                return
+            
+            elif key == 32:  # SPACE key to capture
+                cap.release()
+                cv2.destroyAllWindows()
+                
+                # ✅ Save New Image
+                image_folder = "Images"
+                encoding_folder = "Encodings"
+                os.makedirs(image_folder, exist_ok=True)
+                os.makedirs(encoding_folder, exist_ok=True)
+                
+                image_path = f"{image_folder}/{username}.jpg"
+                cv2.imwrite(image_path, img)
+                
+                # ✅ Generate New Face Encoding
+                img_student = face_recognition.load_image_file(image_path)
+                face_locations = face_recognition.face_locations(img_student)
+                if face_locations:
+                    encode = face_recognition.face_encodings(img_student, face_locations)[0]
+                    encoding_path = f"{encoding_folder}/{username}.p"
+                    with open(encoding_path, 'wb') as file:
+                        pickle.dump(encode, file)
+                    self.result_label.setText("✅ Face Updated Successfully!")
+                else:
+                    os.remove(image_path)
+                    self.result_label.setText("⚠ No face detected. Please try again.")
+                break
+        
+        cursor.close()
+        conn.close()
+
+if __name__ == "__main__":
+    app = QtWidgets.QApplication(sys.argv)
+    window = UpdateFaceWindow()
+    window.show()
+    sys.exit(app.exec_())
+
+
+
+
+
+
+
+
+import mysql.connector
+import tkinter as tk
+from tkinter import messagebox, simpledialog
+import sys
+
+def update_record():
+    root = tk.Tk()
+    root.withdraw()
+
+    # ✅ Take Username from Command-Line Argument
+    username = sys.argv[1] if len(sys.argv) > 1 else simpledialog.askstring("Update Record", "Enter Username to update:")
+
+    if not username:
+        messagebox.showwarning("Error", "⚠ Username is required!")
+        return
+    
+    try:
+        conn = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="root",
+            database="FaceRecognitionDB"
+        )
+        cursor = conn.cursor()
+        cursor.execute("SELECT username, name, email, role, total_attendance FROM users WHERE username = %s", (username,))
+        user = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if not user:
+            messagebox.showwarning("Error", "⚠ Username Not Found!")
+            return
+    except Exception as e:
+        messagebox.showerror("Error", f"Database Error: {str(e)}")
+        return
+    
+    edit_window = tk.Toplevel()
+    edit_window.title("Update User Record")
+    edit_window.geometry("400x400")
+
+    labels = ["Username", "Name", "Email", "Role", "Total Attendance"]
+    entries = {}
+    original_values = list(user)  # Store original values for reset
+
+    for idx, label in enumerate(labels):
+        tk.Label(edit_window, text=label).grid(row=idx, column=0, padx=10, pady=5)
+        entry = tk.Entry(edit_window)
+        entry.insert(0, user[idx] if user[idx] is not None else "")  # ✅ Handle NULL values
+        entry.grid(row=idx, column=1, padx=10, pady=5)
+        entries[label] = entry
+
+    # ✅ Prevent username editing (must remain unique)
+    entries["Username"].config(state="disabled")
+
+    # ✅ Prevent role editing if user is not admin
+    if user[3] == "user":
+        entries["Role"].config(state="disabled")
+
+    def save_changes():
+        updated_values = [entries[label].get() for label in labels[1:]]  # Exclude username
+        try:
+            conn = mysql.connector.connect(
+                host="localhost",
+                user="root",
+                password="root",
+                database="FaceRecognitionDB"
+            )
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE users SET name=%s, email=%s, role=%s, total_attendance=%s WHERE username=%s
+            """, updated_values + [username])  # ✅ Don't update `username`
+            conn.commit()
+            cursor.close()
+            conn.close()
+            messagebox.showinfo("Success", "✅ User record updated successfully!")
+            edit_window.destroy()
+        except Exception as e:
+            messagebox.showerror("Error", f"Database Error: {str(e)}")
+
+    def reset_fields():
+        for idx, label in enumerate(labels[1:]):  # Exclude username
+            entries[label].delete(0, tk.END)
+            entries[label].insert(0, original_values[idx + 1] if original_values[idx + 1] is not None else "")
+
+    save_button = tk.Button(edit_window, text="Save Changes", command=save_changes)
+    save_button.grid(row=len(labels), column=0, pady=10)
+
+    reset_button = tk.Button(edit_window, text="Reset", command=reset_fields)
+    reset_button.grid(row=len(labels), column=1, pady=10)
+
+    edit_window.mainloop()
+
+if __name__ == "__main__":
+    update_record()
+
+
+
+
+
+
+
+
+
+
+
+
+
+from PyQt5 import QtWidgets, QtGui, QtCore
+import mysql.connector
+import sys
+
+class UpdateRecordWindow(QtWidgets.QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Update User Record")
+        self.setGeometry(200, 200, 400, 300)
+        self.setStyleSheet("background-color: #ECF0F1;")
+        self.initUI()
+
+    def initUI(self):
+        layout = QtWidgets.QVBoxLayout()
+
+        self.label = QtWidgets.QLabel("Enter Username to Update:")
+        self.label.setFont(QtGui.QFont("Arial", 12))
+        layout.addWidget(self.label)
+
+        self.username_input = QtWidgets.QLineEdit()
+        self.username_input.setPlaceholderText("Username")
+        layout.addWidget(self.username_input)
+
+        self.new_name_input = QtWidgets.QLineEdit()
+        self.new_name_input.setPlaceholderText("New Name")
+        layout.addWidget(self.new_name_input)
+
+        self.new_email_input = QtWidgets.QLineEdit()
+        self.new_email_input.setPlaceholderText("New Email")
+        layout.addWidget(self.new_email_input)
+
+        self.new_role_input = QtWidgets.QComboBox()
+        self.new_role_input.addItems(["user", "admin"])
+        layout.addWidget(self.new_role_input)
+
+        self.update_btn = QtWidgets.QPushButton("Update Record")
+        self.update_btn.setStyleSheet("background-color: #3498DB; color: white; padding: 10px; font-size: 14px;")
+        self.update_btn.clicked.connect(self.update_record)
+        layout.addWidget(self.update_btn)
+
+        self.result_label = QtWidgets.QLabel("")
+        layout.addWidget(self.result_label)
+
+        self.setLayout(layout)
+
+    def update_record(self):
+        username = self.username_input.text()
+        new_name = self.new_name_input.text()
+        new_email = self.new_email_input.text()
+        new_role = self.new_role_input.currentText()
+
+        if not username or not new_name or not new_email:
+            self.result_label.setText("⚠ All fields are required!")
+            return
+
+        try:
+            conn = mysql.connector.connect(
+                host="localhost",
+                user="root",
+                password="root",
+                database="FaceRecognitionDB"
+            )
+            cursor = conn.cursor()
+            cursor.execute("SELECT username FROM users WHERE username = %s", (username,))
+            user = cursor.fetchone()
+
+            if user:
+                cursor.execute("""
+                    UPDATE users 
+                    SET name = %s, email = %s, role = %s 
+                    WHERE username = %s
+                """, (new_name, new_email, new_role, username))
+                conn.commit()
+                self.result_label.setText("✅ Record Updated Successfully!")
+            else:
+                self.result_label.setText("⚠ Username Not Found!")
+
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            self.result_label.setText(f"❌ Error: {str(e)}")
+
+if __name__ == "__main__":
+    app = QtWidgets.QApplication(sys.argv)
+    window = UpdateRecordWindow()
+    window.show()
+    sys.exit(app.exec_())
+
+
+
+
+import mysql.connector
+import tkinter as tk
+from tkinter import messagebox, simpledialog
+import subprocess
+from send_otp import send_otp  # ✅ Import OTP Module
+
+class UserManagementApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("User Management")
+        self.root.geometry("400x350")
+
+        self.initUI()
+
+    def initUI(self):
+        tk.Label(self.root, text="Face Recognition System", font=("Arial", 14, "bold")).pack(pady=10)
+
+        tk.Label(self.root, text="Username:").pack()
+        self.entry_username = tk.Entry(self.root)
+        self.entry_username.pack()
+
+        tk.Label(self.root, text="Password:").pack()
+        self.entry_password = tk.Entry(self.root, show="*")
+        self.entry_password.pack()
+
+        tk.Button(self.root, text="Login", command=self.login).pack(pady=5)
+        tk.Button(self.root, text="Create New User", command=self.create_user).pack(pady=5)
+        tk.Button(self.root, text="Reset Password", command=self.reset_password).pack(pady=5)
+
+    def login(self):
+        username = self.entry_username.get()
+        password = self.entry_password.get()
+
+        if not username or not password:
+            messagebox.showwarning("Error", "⚠ Username and password are required!")
+            return
+
+        try:
+            conn = mysql.connector.connect(host="localhost", user="root", password="root", database="FaceRecognitionDB")
+            cursor = conn.cursor()
+            cursor.execute("SELECT email, role FROM users WHERE username = %s AND password = %s", (username, password))
+            user = cursor.fetchone()
+            cursor.close()
+            conn.close()
+
+            if user:
+                email, role = user
+
+                messagebox.showinfo("Success", "✅ Login Successful!")
+                self.root.destroy()  # Close login window
+                
+                # ✅ Open GUI with Role-Based Access
+                subprocess.Popen(["python", "G:/attendence/GUI.py", role])
+            else:
+                messagebox.showerror("Error", "❌ Invalid Username or Password!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Database Error: {str(e)}")
+
+    def create_user(self):
+        new_username = simpledialog.askstring("Create User", "Enter New Username:")
+        new_password = simpledialog.askstring("Create User", "Enter New Password:")
+        email = simpledialog.askstring("Create User", "Enter Email:")
+        
+        role = "user"  # ✅ Always assign "user" role
+
+        if not new_username or not new_password or not email:
+            messagebox.showwarning("Error", "⚠ All fields are required!")
+            return
+
+        try:
+            conn = mysql.connector.connect(host="localhost", user="root", password="root", database="FaceRecognitionDB")
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO users (username, password, email, role) VALUES (%s, %s, %s, %s)", 
+                           (new_username, new_password, email, role))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            messagebox.showinfo("Success", "✅ User Created Successfully!")
+        except mysql.connector.Error as err:
+            messagebox.showerror("Error", f"Database Error: {str(err)}")
+
+    def reset_password(self):
+        username = simpledialog.askstring("Reset Password", "Enter Your Username:")
+        if not username:
+            messagebox.showwarning("Error", "⚠ Username is required!")
+            return
+
+        try:
+            conn = mysql.connector.connect(host="localhost", user="root", password="root", database="FaceRecognitionDB")
+            cursor = conn.cursor()
+            cursor.execute("SELECT email FROM users WHERE username = %s", (username,))
+            user = cursor.fetchone()
+            cursor.close()
+            conn.close()
+
+            if not user:
+                messagebox.showwarning("Error", "⚠ Username Not Found!")
+                return
+            
+            email = user[0]
+            sent_otp = send_otp(email)
+            entered_otp = simpledialog.askstring("OTP Verification", "Enter the OTP sent to your email:")
+            if entered_otp != sent_otp:
+                messagebox.showerror("Error", "❌ Invalid OTP!")
+                return
+
+            new_password = simpledialog.askstring("Reset Password", "Enter New Password:")
+            if not new_password:
+                messagebox.showwarning("Error", "⚠ New password is required!")
+                return
+
+            conn = mysql.connector.connect(host="localhost", user="root", password="root", database="FaceRecognitionDB")
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET password = %s WHERE username = %s", (new_password, username))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            messagebox.showinfo("Success", "✅ Password Reset Successfully!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Database Error: {str(e)}")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = UserManagementApp(root)
+    root.mainloop()
+
